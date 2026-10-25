@@ -1,0 +1,15 @@
+bin/
+temp/
+*.user
+*.obj
+*.pdb
+*.idb
+*.ilk
+*.iobj
+*.ipdb
+*.exp
+*.lib
+*.log
+*.tlog
+*.recipe
+.vs/
