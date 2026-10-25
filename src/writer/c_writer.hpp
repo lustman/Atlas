@@ -43,8 +43,8 @@ bool set_mute( bool value );
 
 class c_mute {
 public:
-	c_mute( ) { this->m_prev = set_mute( true ); }
-	~c_mute( ) { set_mute( this->m_prev ); }
+	c_mute( ) { m_prev = set_mute( true ); }
+	~c_mute( ) { set_mute( m_prev ); }
 	c_mute( const c_mute& ) = delete;
 	c_mute& operator=( const c_mute& ) = delete;
 
@@ -61,7 +61,7 @@ public:
 	bool open( );
 	void flush( );
 	void save_raw( const JNINativeInterface_* table );
-	const std::string& path( ) const { return this->m_path; }
+	const std::string& path( ) const { return m_path; }
 
 	std::string object_name( JNIEnv* env, jobject value );
 	std::string method_name( jmethodID id );
@@ -79,7 +79,7 @@ public:
 	std::string show_string( std::string_view text );
 	std::string env_text( std::string_view name, std::string_view head, std::string_view extra );
 	std::string join( std::string_view a, std::string_view b );
-	std::string end_text( JNIEnv* env, jmethodID id, std::string_view value, jobject self = nullptr );
+	std::string end_text( jmethodID id, std::string_view value, jobject self = nullptr );
 	std::string read_string( JNIEnv* env, jmethodID id, jobject value );
 	std::string read_string( JNIEnv* env, jfieldID id, jobject value );
 	std::string stored_str( jobject value );
@@ -88,7 +88,7 @@ public:
 	std::string field_text( jfieldID id );
 	std::string va_args( JNIEnv* env, jmethodID id, va_list args );
 	std::string jvalue_args( JNIEnv* env, jmethodID id, const jvalue* args );
-	std::string class_name( JNIEnv* env, jclass cls );
+	std::string class_name( jclass cls );
 	jsize array_len( JNIEnv* env, jarray array );
 	jsize string_len( JNIEnv* env, jstring str );
 
@@ -111,22 +111,22 @@ private:
 		void ( *m_exception_clear )( JNIEnv* ) = {};
 		const char* ( *m_get_string_utf_chars )( JNIEnv*, jstring, jboolean* ) = {};
 		void ( *m_release_string_utf_chars )( JNIEnv*, jstring, const char* ) = {};
-		jsize ( *m_get_string_length )( JNIEnv*, jstring ) = {};
+		jsize( *m_get_string_length )( JNIEnv*, jstring ) = {};
 		jsize( *m_get_array_length )( JNIEnv*, jarray ) = {};
-		jclass ( JNICALL* m_find_class )( JNIEnv*, const char* ) = {};
-		jclass ( JNICALL* m_get_object_class )( JNIEnv*, jobject ) = {};
-		jboolean ( JNICALL* m_is_instance_of )( JNIEnv*, jobject, jclass ) = {};
-		jmethodID ( JNICALL* m_get_method_id )( JNIEnv*, jclass, const char*, const char* ) = {};
-		jobject ( JNICALL* m_to_reflected_method )( JNIEnv*, jclass, jmethodID, jboolean ) = {};
-		jobject ( JNICALL* m_to_reflected_field )( JNIEnv*, jclass, jfieldID, jboolean ) = {};
-		jobject ( JNICALL* m_call_object_a )( JNIEnv*, jobject, jmethodID, const jvalue* ) = {};
-		jboolean ( JNICALL* m_call_boolean_a )( JNIEnv*, jobject, jmethodID, const jvalue* ) = {};
+		jclass( JNICALL* m_find_class )( JNIEnv*, const char* ) = {};
+		jclass( JNICALL* m_get_object_class )( JNIEnv*, jobject ) = {};
+		jboolean( JNICALL* m_is_instance_of )( JNIEnv*, jobject, jclass ) = {};
+		jmethodID( JNICALL* m_get_method_id )( JNIEnv*, jclass, const char*, const char* ) = {};
+		jobject( JNICALL* m_to_reflected_method )( JNIEnv*, jclass, jmethodID, jboolean ) = {};
+		jobject( JNICALL* m_to_reflected_field )( JNIEnv*, jclass, jfieldID, jboolean ) = {};
+		jobject( JNICALL* m_call_object_a )( JNIEnv*, jobject, jmethodID, const jvalue* ) = {};
+		jboolean( JNICALL* m_call_boolean_a )( JNIEnv*, jobject, jmethodID, const jvalue* ) = {};
 		void ( JNICALL* m_delete_local )( JNIEnv*, jobject ) = {};
-		jobject ( JNICALL* m_new_global )( JNIEnv*, jobject ) = {};
-		jint ( JNICALL* m_push_frame )( JNIEnv*, jint ) = {};
-		jobject ( JNICALL* m_pop_frame )( JNIEnv*, jobject ) = {};
-		jobject ( JNICALL* m_get_array_element )( JNIEnv*, jobjectArray, jsize ) = {};
-		jobjectRefType ( JNICALL* m_ref_type )( JNIEnv*, jobject ) = {};
+		jobject( JNICALL* m_new_global )( JNIEnv*, jobject ) = {};
+		jint( JNICALL* m_push_frame )( JNIEnv*, jint ) = {};
+		jobject( JNICALL* m_pop_frame )( JNIEnv*, jobject ) = {};
+		jobject( JNICALL* m_get_array_element )( JNIEnv*, jobjectArray, jsize ) = {};
+		jobjectRefType( JNICALL* m_ref_type )( JNIEnv*, jobject ) = {};
 	};
 
 	struct java_t {
@@ -197,16 +197,16 @@ private:
 
 		jni_frame_t( c_writer* writer, JNIEnv* env ) : m_writer( writer ), m_env( env ) {
 			if ( writer && writer->m_raw.m_push_frame && writer->m_raw.m_push_frame( env, 64 ) == JNI_OK )
-				this->m_ok = true;
+				m_ok = true;
 		}
 
 		~jni_frame_t( ) {
-			if ( !this->m_ok || !this->m_writer || !this->m_writer->m_raw.m_pop_frame )
+			if ( !m_ok || !m_writer || !m_writer->m_raw.m_pop_frame )
 				return;
 
-			if ( this->m_writer->pending( this->m_env ) )
-				this->m_writer->clear( this->m_env );
-			this->m_writer->m_raw.m_pop_frame( this->m_env, nullptr );
+			if ( m_writer->pending( m_env ) )
+				m_writer->clear( m_env );
+			m_writer->m_raw.m_pop_frame( m_env, nullptr );
 		}
 
 		jni_frame_t( const jni_frame_t& ) = delete;
@@ -244,8 +244,11 @@ private:
 	std::string old_name( std::string_view text, std::string_view name );
 	std::string normalize( std::string_view name );
 	std::string sanitize( std::string_view text );
+	std::string noted( std::string_view expr, std::string_view comment );
 	std::string var_line( std::string_view type, std::string_view name, std::string_view expr, std::string_view comment );
 	std::string call_line( std::string_view expr, std::string_view comment );
+	template< typename T, typename Fn >
+	jsize read_len( JNIEnv* env, T value, Fn fn );
 	std::vector< param_t > parse_sig( std::string_view sig );
 	std::string signature( jmethodID id );
 	void line( std::string_view text );

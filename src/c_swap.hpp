@@ -7,68 +7,69 @@ public:
 	c_swap( ) = default;
 	c_swap( const c_swap& ) = delete;
 	c_swap& operator=( const c_swap& ) = delete;
-	~c_swap( ) { this->destroy( ); }
+	~c_swap( ) { destroy( ); }
 
 	bool create( void** slot, void* detour ) {
 		if ( !slot || !detour || !*slot )
 			return false;
 
-		if ( this->m_created ) {
-			if ( *slot == this->m_detour )
+		if ( m_created ) {
+			if ( *slot == m_detour )
 				return true;
 
-			if ( *slot != this->m_original )
+			if ( *slot != m_original )
 				return false;
 
-			return this->patch( slot, this->m_detour );
+			return patch( slot, m_detour );
 		}
 
-		this->m_slot = slot;
-		this->m_detour = detour;
-		this->m_original = *slot;
-		this->m_created = true;
+		m_slot = slot;
+		m_detour = detour;
+		m_original = *slot;
+		m_created = true;
 
 		return true;
 	}
 
 	bool enable( ) {
-		if ( !this->m_created )
+		if ( !m_created )
 			return false;
 
-		if ( this->m_enabled )
+		if ( m_enabled )
 			return true;
 
-		if ( !this->patch( this->m_slot, this->m_detour ) )
+		if ( !patch( m_slot, m_detour ) )
 			return false;
 
-		this->m_enabled = true;
+		m_enabled = true;
 
 		return true;
 	}
 
 	bool disable( ) {
-		if ( !this->m_created || !this->m_enabled )
+		if ( !m_created || !m_enabled )
 			return true;
 
-		if ( !this->patch( this->m_slot, this->m_original ) )
+		if ( !patch( m_slot, m_original ) )
 			return false;
 
-		this->m_enabled = false;
+		m_enabled = false;
 
 		return true;
 	}
 
 	template< typename T >
-	T original( ) const { return reinterpret_cast< T >( this->m_original ); }
+	T original( ) const { return reinterpret_cast< T >( m_original ); }
 
 	template< typename T, typename... args_t >
 	auto invoke( args_t&&... args ) const {
-		auto* fn = this->original< T >( );
+		auto* fn = original< T >( );
+		using ret_t = std::invoke_result_t< T, args_t... >;
 		if ( !fn ) {
-			if constexpr ( std::is_void_v< std::invoke_result_t< T, args_t... > > )
+			if constexpr ( std::is_void_v< ret_t > )
 				return;
 			else
-				return std::invoke_result_t< T, args_t... >{ };
+				return ret_t{ };
 		}
 
 		return fn( std::forward< args_t >( args )... );
@@ -77,7 +78,7 @@ public:
 	template< auto Member, typename... args_t >
 	auto invoke( args_t&&... args ) const {
 		using fn_t = std::remove_reference_t< decltype( ( std::declval< JNINativeInterface_& >( ).*Member ) ) >;
-		return this->invoke< fn_t >( std::forward< args_t >( args )... );
+		return invoke< fn_t >( std::forward< args_t >( args )... );
 	}
 
 private:
@@ -93,15 +94,15 @@ private:
 	}
 
 	void destroy( ) {
-		if ( !this->m_created )
+		if ( !m_created )
 			return;
 
-		this->disable( );
-		this->m_slot = {};
-		this->m_detour = {};
-		this->m_original = {};
-		this->m_created = {};
-		this->m_enabled = {};
+		disable( );
+		m_slot = {};
+		m_detour = {};
+		m_original = {};
+		m_created = {};
+		m_enabled = {};
 	}
 
 	void** m_slot = {};

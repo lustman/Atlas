@@ -10,13 +10,27 @@ void copy_chars( char* dst, size_t cap, std::string_view src ) {
 	if ( count >= cap )
 		count = cap - 1;
 
-	for ( size_t i = 0; i < count; ++i )
-		dst[ i ] = src[ i ];
-
+	std::copy_n( src.begin( ), count, dst );
 	dst[ count ] = 0;
 }
 
-int notify_thread( void* ) {
+bool bind_env( JavaVM* vm, JNIEnv** out, bool* attached ) {
+	JNIEnv* env = {};
+	auto status = vm->GetEnv( reinterpret_cast< void** >( &env ), JNI_VERSION_1_8 );
+	auto did = status == JNI_EDETACHED;
+	if ( did )
+		status = vm->AttachCurrentThread( reinterpret_cast< void** >( &env ), nullptr );
+	if ( status != JNI_OK || !env )
+		return false;
+
+	*out = env;
+	if ( attached )
+		*attached = did;
+
+	return true;
+}
+
+unsigned long __stdcall notify_thread( void* ) {
 	auto* window = ::CreateWindowExA( 0, "STATIC", "", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, nullptr, nullptr );
 	if ( !window )
 		return 0;
@@ -63,7 +77,7 @@ void notify( std::string_view title, std::string_view text ) {
 	copy_chars( msg.m_title, sizeof( msg.m_title ), title );
 	copy_chars( msg.m_text, sizeof( msg.m_text ), text );
 
-	auto* thread = ::CreateThread( nullptr, 0, reinterpret_cast< LPTHREAD_START_ROUTINE >( notify_thread ), nullptr, 0, nullptr );
+	auto* thread = ::CreateThread( nullptr, 0, notify_thread, nullptr, 0, nullptr );
 	if ( thread )
 		::CloseHandle( thread );
 }
@@ -83,7 +97,7 @@ int hook_env( JNIEnv* env ) {
 
 #ifdef INJECTABLE
 
-int inject_thread( void* ) {
+unsigned long inject_thread( void* ) {
 	while ( 1 ) {
 		JavaVM* vm = {};
 		jsize count = {};
@@ -106,11 +120,8 @@ int inject_thread( void* ) {
 			continue;
 		}
 
-		auto status = vm->GetEnv( reinterpret_cast< void** >( &env ), JNI_VERSION_1_8 );
-		auto attached = status == JNI_EDETACHED;
-		if ( attached )
-			status = vm->AttachCurrentThread( reinterpret_cast< void** >( &env ), nullptr );
-		if ( status != JNI_OK || !env ) {
+		bool attached = {};
+		if ( !bind_env( vm, &env, &attached ) ) {
 			::Sleep( 50 );
 			continue;
 		}
@@ -124,7 +135,7 @@ int inject_thread( void* ) {
 }
 
 int initialize( ) {
-	void* thread = ::CreateThread( nullptr, 0, reinterpret_cast< LPTHREAD_START_ROUTINE >( inject_thread ), nullptr, 0, nullptr );
+	void* thread = ::CreateThread( nullptr, 0, inject_thread, nullptr, 0, nullptr );
 	if ( thread )
 		return ::CloseHandle( thread );
 
@@ -135,10 +146,7 @@ int initialize( ) {
 
 extern "C" __declspec( dllexport ) jint JNI_OnLoad( JavaVM* vm, void* ) {
 	JNIEnv* env = {};
-	auto status = vm->GetEnv( reinterpret_cast< void** >( &env ), JNI_VERSION_1_8 );
-	if ( status == JNI_EDETACHED )
-		status = vm->AttachCurrentThread( reinterpret_cast< void** >( &env ), nullptr );
-	if ( status != JNI_OK || !env )
+	if ( !bind_env( vm, &env, nullptr ) )
 		return JNI_ERR;
 
 	hook_env( env );

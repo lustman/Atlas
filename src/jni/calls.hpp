@@ -1,6 +1,5 @@
 #pragma once
 
-#include "c_swap.hpp"
 #include "hooks.hpp"
 #include "ldr.hpp"
 
@@ -8,7 +7,7 @@ template< size_t N >
 struct fn_name_t {
 	char m_data[ N ] = {};
 
-	constexpr fn_name_t( const char ( &text )[ N ] ) {
+	constexpr fn_name_t( const char( &text )[ N ] ) {
 		for ( size_t i = 0; i < N; ++i )
 			m_data[ i ] = text[ i ];
 	}
@@ -155,214 +154,154 @@ struct call_t {
 
 		auto expr = g_writer.env_text( api, arg_text( env, obj, clazz, methodID ), decoded );
 		if constexpr ( Kind == ret_mode_t::object )
-			g_writer.log_obj( env, result, "jobject", expr, g_writer.end_text( env, methodID, g_writer.read_string( env, methodID, result ), recv_obj( obj ) ), ref_kind_t::local );
+			g_writer.log_obj( env, result, "jobject", expr, g_writer.end_text( methodID, g_writer.read_string( env, methodID, result ), recv_obj( obj ) ), ref_kind_t::local );
 		else if constexpr ( Kind == ret_mode_t::value )
-			g_writer.log_var( type_name< Ret >( ), expr, g_writer.end_text( env, methodID, Note( result ), recv_obj( obj ) ) );
+			g_writer.log_var( type_name< Ret >( ), expr, g_writer.end_text( methodID, Note( result ), recv_obj( obj ) ) );
 	}
 
 	static void log_noret( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, std::string_view api, std::string_view decoded ) {
 		if ( muted( ) )
 			return;
 
-		g_writer.log( g_writer.env_text( api, arg_text( env, obj, clazz, methodID ), decoded ), g_writer.end_text( env, methodID, "", recv_obj( obj ) ) );
+		g_writer.log( g_writer.env_text( api, arg_text( env, obj, clazz, methodID ), decoded ), g_writer.end_text( methodID, "", recv_obj( obj ) ) );
 	}
 
-	static Ret hk( JNIEnv* env, jobject obj, jmethodID methodID, ... ) requires ( Mode == call_mode_t::instance && Kind != ret_mode_t::void_ret ) {
+	static Ret hk( JNIEnv* env, jobject obj, jmethodID methodID, ... ) requires ( Mode == call_mode_t::instance ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		va_list args = {};
 		va_start( args, methodID );
 		auto decoded = read_va( env, obj, nullptr, methodID, args, false );
-		auto result = v( ).invoke< FnV >( env, obj, methodID, args );
-		va_end( args );
-
-		log_result( env, obj, nullptr, methodID, Name.view( ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, obj, methodID, args );
+			va_end( args );
+			log_noret( env, obj, nullptr, methodID, Name.view( ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, obj, methodID, args );
+			va_end( args );
+			log_result( env, obj, nullptr, methodID, Name.view( ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk( JNIEnv* env, jobject obj, jmethodID methodID, ... ) requires ( Mode == call_mode_t::instance && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		va_list args = {};
-		va_start( args, methodID );
-		auto decoded = read_va( env, obj, nullptr, methodID, args, false );
-		v( ).invoke< FnV >( env, obj, methodID, args );
-		va_end( args );
-
-		log_noret( env, obj, nullptr, methodID, Name.view( ), decoded );
-	}
-
-	static Ret hk_v( JNIEnv* env, jobject obj, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::instance && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_v( JNIEnv* env, jobject obj, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::instance ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_va( env, obj, nullptr, methodID, args, false );
-		auto result = v( ).invoke< FnV >( env, obj, methodID, args );
-
-		log_result( env, obj, nullptr, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, obj, methodID, args );
+			log_noret( env, obj, nullptr, methodID, std::format( "{}V", Name.view( ) ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, obj, methodID, args );
+			log_result( env, obj, nullptr, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk_v( JNIEnv* env, jobject obj, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::instance && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_va( env, obj, nullptr, methodID, args, false );
-		v( ).invoke< FnV >( env, obj, methodID, args );
-
-		log_noret( env, obj, nullptr, methodID, std::format( "{}V", Name.view( ) ), decoded );
-	}
-
-	static Ret hk_a( JNIEnv* env, jobject obj, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::instance && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_a( JNIEnv* env, jobject obj, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::instance ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_jvalues( env, obj, nullptr, methodID, args, false );
-		auto result = a( ).invoke< FnA >( env, obj, methodID, args );
-
-		log_result( env, obj, nullptr, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			a( ).invoke< FnA >( env, obj, methodID, args );
+			log_noret( env, obj, nullptr, methodID, std::format( "{}A", Name.view( ) ), decoded );
+		} else {
+			auto result = a( ).invoke< FnA >( env, obj, methodID, args );
+			log_result( env, obj, nullptr, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk_a( JNIEnv* env, jobject obj, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::instance && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_jvalues( env, obj, nullptr, methodID, args, false );
-		a( ).invoke< FnA >( env, obj, methodID, args );
-
-		log_noret( env, obj, nullptr, methodID, std::format( "{}A", Name.view( ) ), decoded );
-	}
-
-	static Ret hk( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::nonvirtual && Kind != ret_mode_t::void_ret ) {
+	static Ret hk( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::nonvirtual ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		va_list args = {};
 		va_start( args, methodID );
 		auto decoded = read_va( env, obj, clazz, methodID, args, false );
-		auto result = v( ).invoke< FnV >( env, obj, clazz, methodID, args );
-		va_end( args );
-
-		log_result( env, obj, clazz, methodID, Name.view( ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, obj, clazz, methodID, args );
+			va_end( args );
+			log_noret( env, obj, clazz, methodID, Name.view( ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, obj, clazz, methodID, args );
+			va_end( args );
+			log_result( env, obj, clazz, methodID, Name.view( ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::nonvirtual && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		va_list args = {};
-		va_start( args, methodID );
-		auto decoded = read_va( env, obj, clazz, methodID, args, false );
-		v( ).invoke< FnV >( env, obj, clazz, methodID, args );
-		va_end( args );
-
-		log_noret( env, obj, clazz, methodID, Name.view( ), decoded );
-	}
-
-	static Ret hk_v( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::nonvirtual && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_v( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::nonvirtual ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_va( env, obj, clazz, methodID, args, false );
-		auto result = v( ).invoke< FnV >( env, obj, clazz, methodID, args );
-
-		log_result( env, obj, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, obj, clazz, methodID, args );
+			log_noret( env, obj, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, obj, clazz, methodID, args );
+			log_result( env, obj, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk_v( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::nonvirtual && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_va( env, obj, clazz, methodID, args, false );
-		v( ).invoke< FnV >( env, obj, clazz, methodID, args );
-
-		log_noret( env, obj, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded );
-	}
-
-	static Ret hk_a( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::nonvirtual && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_a( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::nonvirtual ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_jvalues( env, obj, clazz, methodID, args, false );
-		auto result = a( ).invoke< FnA >( env, obj, clazz, methodID, args );
-
-		log_result( env, obj, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			a( ).invoke< FnA >( env, obj, clazz, methodID, args );
+			log_noret( env, obj, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded );
+		} else {
+			auto result = a( ).invoke< FnA >( env, obj, clazz, methodID, args );
+			log_result( env, obj, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk_a( JNIEnv* env, jobject obj, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::nonvirtual && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_jvalues( env, obj, clazz, methodID, args, false );
-		a( ).invoke< FnA >( env, obj, clazz, methodID, args );
-
-		log_noret( env, obj, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded );
-	}
-
-	static Ret hk( JNIEnv* env, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::class_call && Kind != ret_mode_t::void_ret ) {
+	static Ret hk( JNIEnv* env, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::class_call ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		va_list args = {};
 		va_start( args, methodID );
 		auto decoded = read_va( env, nullptr, clazz, methodID, args, static_call );
-		auto result = v( ).invoke< FnV >( env, clazz, methodID, args );
-		va_end( args );
-
-		log_result( env, nullptr, clazz, methodID, Name.view( ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, clazz, methodID, args );
+			va_end( args );
+			log_noret( env, nullptr, clazz, methodID, Name.view( ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, clazz, methodID, args );
+			va_end( args );
+			log_result( env, nullptr, clazz, methodID, Name.view( ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk( JNIEnv* env, jclass clazz, jmethodID methodID, ... ) requires ( Mode == call_mode_t::class_call && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		va_list args = {};
-		va_start( args, methodID );
-		auto decoded = read_va( env, nullptr, clazz, methodID, args, static_call );
-		v( ).invoke< FnV >( env, clazz, methodID, args );
-		va_end( args );
-
-		log_noret( env, nullptr, clazz, methodID, Name.view( ), decoded );
-	}
-
-	static Ret hk_v( JNIEnv* env, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::class_call && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_v( JNIEnv* env, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::class_call ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_va( env, nullptr, clazz, methodID, args, static_call );
-		auto result = v( ).invoke< FnV >( env, clazz, methodID, args );
-
-		log_result( env, nullptr, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
-
-		return result;
+		if constexpr ( std::is_void_v< Ret > ) {
+			v( ).invoke< FnV >( env, clazz, methodID, args );
+			log_noret( env, nullptr, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded );
+		} else {
+			auto result = v( ).invoke< FnV >( env, clazz, methodID, args );
+			log_result( env, nullptr, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 
-	static void hk_v( JNIEnv* env, jclass clazz, jmethodID methodID, va_list args ) requires ( Mode == call_mode_t::class_call && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_va( env, nullptr, clazz, methodID, args, static_call );
-		v( ).invoke< FnV >( env, clazz, methodID, args );
-
-		log_noret( env, nullptr, clazz, methodID, std::format( "{}V", Name.view( ) ), decoded );
-	}
-
-	static Ret hk_a( JNIEnv* env, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::class_call && Kind != ret_mode_t::void_ret ) {
+	static Ret hk_a( JNIEnv* env, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::class_call ) {
 		c_caller scope( _ReturnAddress( ) );
 
 		auto decoded = read_jvalues( env, nullptr, clazz, methodID, args, static_call );
-		auto result = a( ).invoke< FnA >( env, clazz, methodID, args );
-
-		log_result( env, nullptr, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
-
-		return result;
-	}
-
-	static void hk_a( JNIEnv* env, jclass clazz, jmethodID methodID, const jvalue* args ) requires ( Mode == call_mode_t::class_call && Kind == ret_mode_t::void_ret ) {
-		c_caller scope( _ReturnAddress( ) );
-
-		auto decoded = read_jvalues( env, nullptr, clazz, methodID, args, static_call );
-		a( ).invoke< FnA >( env, clazz, methodID, args );
-
-		log_noret( env, nullptr, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded );
+		if constexpr ( std::is_void_v< Ret > ) {
+			a( ).invoke< FnA >( env, clazz, methodID, args );
+			log_noret( env, nullptr, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded );
+		} else {
+			auto result = a( ).invoke< FnA >( env, clazz, methodID, args );
+			log_result( env, nullptr, clazz, methodID, std::format( "{}A", Name.view( ) ), decoded, result );
+			return result;
+		}
 	}
 };
 

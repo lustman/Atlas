@@ -1,28 +1,24 @@
-#include "c_swap.hpp"
 #include "hooks.hpp"
 #include "calls.hpp"
-#include "ldr.hpp"
+
+id_parts_t id_parts( JNIEnv* env, jclass clazz, const char* name, const char* sig ) {
+	return { g_writer.object_name( env, clazz ), g_writer.class_name( clazz ), name ? name : "", sig ? sig : "" };
+}
 
 void log_method( JNIEnv* env, const char* api, jclass clazz, const char* name, const char* sig, jmethodID result ) {
-	auto cls = g_writer.object_name( env, clazz );
-	auto java = g_writer.class_name( env, clazz );
-	auto nm = std::string_view{ name ? name : "" };
-	auto sg = std::string_view{ sig ? sig : "" };
+	auto part = id_parts( env, clazz, name, sig );
 	if ( result )
-		g_writer.set_method( result, java, nm, sg );
-	g_writer.log_id( result, "jmethodID", std::format( "env->{}({}, {}, {})", api, cls, g_writer.literal( nm ), g_writer.literal( sg ) ), std::format( "{} {}{}", java, nm, sg ) );
+		g_writer.set_method( result, part.m_java, part.m_nm, part.m_sg );
+	g_writer.log_id( result, "jmethodID", std::format( "env->{}({}, {}, {})", api, part.m_cls, g_writer.literal( part.m_nm ), g_writer.literal( part.m_sg ) ), std::format( "{} {}{}", part.m_java, part.m_nm, part.m_sg ) );
 }
 
 void log_field( JNIEnv* env, const char* api, jclass clazz, const char* name, const char* sig, jfieldID result ) {
-	auto cls = g_writer.object_name( env, clazz );
-	auto java = g_writer.class_name( env, clazz );
-	auto nm = std::string_view{ name ? name : "" };
-	auto sg = std::string_view{ sig ? sig : "" };
-	auto is_static = std::string_view{ api ? api : "" }.find( "Static" ) != std::string_view::npos;
-	auto expr = std::format( "env->{}({}, {}, {})", api, cls, g_writer.literal( nm ), g_writer.literal( sg ) );
-	auto comment = std::format( "{} {} {}", java, nm, sg );
+	auto part = id_parts( env, clazz, name, sig );
+	auto is_static = std::string_view{ api ? api : "" }.contains( "Static" );
+	auto expr = std::format( "env->{}({}, {}, {})", api, part.m_cls, g_writer.literal( part.m_nm ), g_writer.literal( part.m_sg ) );
+	auto comment = std::format( "{} {} {}", part.m_java, part.m_nm, part.m_sg );
 	if ( result )
-		g_writer.log_field( result, is_static, java, nm, sg, expr, comment, true );
+		g_writer.log_field( result, is_static, part.m_java, part.m_nm, part.m_sg, expr, comment, true );
 	else
 		g_writer.log_id( result, "jfieldID", expr, comment );
 }
@@ -331,7 +327,7 @@ jobject hk_AllocObject( JNIEnv* env, jclass clazz ) {
 	auto* result = o_AllocObject.invoke< &JNINativeInterface_::AllocObject >( env, clazz );
 
 	if ( !muted( ) )
-		g_writer.log_obj( env, result, "jobject", std::format( "env->AllocObject({})", g_writer.object_name( env, clazz ) ), g_writer.class_name( env, clazz ), ref_kind_t::local );
+		g_writer.log_obj( env, result, "jobject", std::format( "env->AllocObject({})", g_writer.object_name( env, clazz ) ), g_writer.class_name( clazz ), ref_kind_t::local );
 
 	return result;
 }
@@ -422,18 +418,6 @@ jstring hk_NewString( JNIEnv* env, const jchar* unicode, jsize len ) {
 	return result;
 }
 
-c_swap o_GetStringLength = {};
-jsize hk_GetStringLength( JNIEnv* env, jstring str ) {
-	c_caller scope( _ReturnAddress( ) );
-
-	auto result = o_GetStringLength.invoke< &JNINativeInterface_::GetStringLength >( env, str );
-
-	if ( !muted( ) )
-		g_writer.log_var( "jsize", std::format( "env->GetStringLength({})", g_writer.object_name( env, str ) ), std::format( "{}", result ) );
-
-	return result;
-}
-
 c_swap o_GetStringChars = {};
 const jchar* hk_GetStringChars( JNIEnv* env, jstring str, jboolean* isCopy ) {
 	c_caller scope( _ReturnAddress( ) );
@@ -451,16 +435,6 @@ const jchar* hk_GetStringChars( JNIEnv* env, jstring str, jboolean* isCopy ) {
 	return result;
 }
 
-c_swap o_ReleaseStringChars = {};
-void hk_ReleaseStringChars( JNIEnv* env, jstring str, const jchar* chars ) {
-	c_caller scope( _ReturnAddress( ) );
-
-	o_ReleaseStringChars.invoke< &JNINativeInterface_::ReleaseStringChars >( env, str, chars );
-
-	if ( !muted( ) )
-		g_writer.log( std::format( "env->ReleaseStringChars({}, /*chars*/ NULL)", g_writer.object_name( env, str ) ), "" );
-}
-
 c_swap o_NewStringUTF = {};
 jstring hk_NewStringUTF( JNIEnv* env, const char* utf ) {
 	c_caller scope( _ReturnAddress( ) );
@@ -472,18 +446,6 @@ jstring hk_NewStringUTF( JNIEnv* env, const char* utf ) {
 		g_writer.save_text( text );
 		g_writer.log_obj( env, result, "jstring", std::format( "env->NewStringUTF({})", g_writer.literal( text ) ), g_writer.show_string( text ), ref_kind_t::local );
 	}
-
-	return result;
-}
-
-c_swap o_GetStringUTFLength = {};
-jsize hk_GetStringUTFLength( JNIEnv* env, jstring str ) {
-	c_caller scope( _ReturnAddress( ) );
-
-	auto result = o_GetStringUTFLength.invoke< &JNINativeInterface_::GetStringUTFLength >( env, str );
-
-	if ( !muted( ) )
-		g_writer.log_var( "jsize", std::format( "env->GetStringUTFLength({})", g_writer.object_name( env, str ) ), std::format( "{}", result ) );
 
 	return result;
 }
@@ -501,16 +463,6 @@ const char* hk_GetStringUTFChars( JNIEnv* env, jstring str, jboolean* isCopy ) {
 	}
 
 	return result;
-}
-
-c_swap o_ReleaseStringUTFChars = {};
-void hk_ReleaseStringUTFChars( JNIEnv* env, jstring str, const char* chars ) {
-	c_caller scope( _ReturnAddress( ) );
-
-	o_ReleaseStringUTFChars.invoke< &JNINativeInterface_::ReleaseStringUTFChars >( env, str, chars );
-
-	if ( !muted( ) )
-		g_writer.log( std::format( "env->ReleaseStringUTFChars({}, /*chars*/ NULL)", g_writer.object_name( env, str ) ), "" );
 }
 
 c_swap o_GetArrayLength = {};
@@ -824,6 +776,44 @@ jlong hk_GetStringUTFLengthAsLong( JNIEnv* env, jstring str ) {
 	return result;
 }
 
+template< fn_name_t Name, auto Member >
+struct string_len_t {
+	static constexpr auto fn = Member;
+
+	static c_swap& hook( ) {
+		static c_swap value = {};
+		return value;
+	}
+
+	static jsize hk( JNIEnv* env, jstring str ) {
+		c_caller scope( _ReturnAddress( ) );
+
+		auto result = hook( ).template invoke< Member >( env, str );
+		if ( !muted( ) )
+			g_writer.log_var( "jsize", std::format( "env->{}({})", Name.view( ), g_writer.object_name( env, str ) ), std::format( "{}", result ) );
+
+		return result;
+	}
+};
+
+template< fn_name_t Name, typename Ch, auto Member >
+struct release_chars_t {
+	static constexpr auto fn = Member;
+
+	static c_swap& hook( ) {
+		static c_swap value = {};
+		return value;
+	}
+
+	static void hk( JNIEnv* env, jstring str, const Ch* chars ) {
+		c_caller scope( _ReturnAddress( ) );
+
+		hook( ).template invoke< Member >( env, str, chars );
+		if ( !muted( ) )
+			g_writer.log( std::format( "env->{}({}, /*chars*/ NULL)", Name.view( ), g_writer.object_name( env, str ) ), "" );
+	}
+};
+
 template< typename Fn >
 int hook( JNINativeInterface_* table, Fn JNINativeInterface_::* member, c_swap& swap, Fn detour ) {
 	auto* slot = reinterpret_cast< void** >( &( table->*member ) );
@@ -839,19 +829,6 @@ int hook( JNINativeInterface_* table, Fn JNINativeInterface_::* member, c_swap& 
 	return 1;
 }
 
-int hook_at( JNINativeInterface_* table, const slot_t& slot ) {
-	auto* place = reinterpret_cast< void** >( reinterpret_cast< uint8_t* >( table ) + slot.m_offset );
-	if ( !slot.m_detour || !*place )
-		return 0;
-
-	if ( !slot.m_swap->create( place, slot.m_detour ) )
-		return 0;
-
-	if ( !slot.m_swap->enable( ) )
-		return 0;
-
-	return 1;
-}
 
 int install_jni( JNIEnv* env ) {
 	if ( !env || !env->functions )
@@ -861,7 +838,7 @@ int install_jni( JNIEnv* env ) {
 	std::lock_guard guard( lock );
 	auto* table = const_cast< JNINativeInterface_* >( env->functions );
 	static std::vector< void* > installed = {};
-	if ( std::find( installed.begin( ), installed.end( ), static_cast< void* >( table ) ) != installed.end( ) )
+	if ( std::ranges::contains( installed, table ) )
 		return 0;
 
 	installed.push_back( table );
@@ -871,79 +848,81 @@ int install_jni( JNIEnv* env ) {
 
 	auto hooked = 0;
 
-	slot_t slots[ ] = {
-		{ offsetof( JNINativeInterface_, GetVersion ), &o_GetVersion, reinterpret_cast< void* >( &hk_GetVersion ) },
-		{ offsetof( JNINativeInterface_, DefineClass ), &o_DefineClass, reinterpret_cast< void* >( &hk_DefineClass ) },
-		{ offsetof( JNINativeInterface_, FindClass ), &o_FindClass, reinterpret_cast< void* >( &hk_FindClass ) },
-		{ offsetof( JNINativeInterface_, FromReflectedMethod ), &o_FromReflectedMethod, reinterpret_cast< void* >( &hk_FromReflectedMethod ) },
-		{ offsetof( JNINativeInterface_, FromReflectedField ), &o_FromReflectedField, reinterpret_cast< void* >( &hk_FromReflectedField ) },
-		{ offsetof( JNINativeInterface_, ToReflectedMethod ), &o_ToReflectedMethod, reinterpret_cast< void* >( &hk_ToReflectedMethod ) },
-		{ offsetof( JNINativeInterface_, GetSuperclass ), &o_GetSuperclass, reinterpret_cast< void* >( &hk_GetSuperclass ) },
-		{ offsetof( JNINativeInterface_, IsAssignableFrom ), &o_IsAssignableFrom, reinterpret_cast< void* >( &hk_IsAssignableFrom ) },
-		{ offsetof( JNINativeInterface_, ToReflectedField ), &o_ToReflectedField, reinterpret_cast< void* >( &hk_ToReflectedField ) },
-		{ offsetof( JNINativeInterface_, Throw ), &o_Throw, reinterpret_cast< void* >( &hk_Throw ) },
-		{ offsetof( JNINativeInterface_, ThrowNew ), &o_ThrowNew, reinterpret_cast< void* >( &hk_ThrowNew ) },
-		{ offsetof( JNINativeInterface_, ExceptionOccurred ), &o_ExceptionOccurred, reinterpret_cast< void* >( &hk_ExceptionOccurred ) },
-		{ offsetof( JNINativeInterface_, ExceptionDescribe ), &o_ExceptionDescribe, reinterpret_cast< void* >( &hk_ExceptionDescribe ) },
-		{ offsetof( JNINativeInterface_, ExceptionClear ), &o_ExceptionClear, reinterpret_cast< void* >( &hk_ExceptionClear ) },
-		{ offsetof( JNINativeInterface_, FatalError ), &o_FatalError, reinterpret_cast< void* >( &hk_FatalError ) },
-		{ offsetof( JNINativeInterface_, PushLocalFrame ), &o_PushLocalFrame, reinterpret_cast< void* >( &hk_PushLocalFrame ) },
-		{ offsetof( JNINativeInterface_, PopLocalFrame ), &o_PopLocalFrame, reinterpret_cast< void* >( &hk_PopLocalFrame ) },
-		{ offsetof( JNINativeInterface_, NewGlobalRef ), &o_NewGlobalRef, reinterpret_cast< void* >( &hk_NewGlobalRef ) },
-		{ offsetof( JNINativeInterface_, DeleteGlobalRef ), &o_DeleteGlobalRef, reinterpret_cast< void* >( &hk_DeleteGlobalRef ) },
-		{ offsetof( JNINativeInterface_, DeleteLocalRef ), &o_DeleteLocalRef, reinterpret_cast< void* >( &hk_DeleteLocalRef ) },
-		{ offsetof( JNINativeInterface_, IsSameObject ), &o_IsSameObject, reinterpret_cast< void* >( &hk_IsSameObject ) },
-		{ offsetof( JNINativeInterface_, NewLocalRef ), &o_NewLocalRef, reinterpret_cast< void* >( &hk_NewLocalRef ) },
-		{ offsetof( JNINativeInterface_, EnsureLocalCapacity ), &o_EnsureLocalCapacity, reinterpret_cast< void* >( &hk_EnsureLocalCapacity ) },
-		{ offsetof( JNINativeInterface_, AllocObject ), &o_AllocObject, reinterpret_cast< void* >( &hk_AllocObject ) },
-		{ offsetof( JNINativeInterface_, GetObjectClass ), &o_GetObjectClass, reinterpret_cast< void* >( &hk_GetObjectClass ) },
-		{ offsetof( JNINativeInterface_, IsInstanceOf ), &o_IsInstanceOf, reinterpret_cast< void* >( &hk_IsInstanceOf ) },
-		{ offsetof( JNINativeInterface_, GetMethodID ), &o_GetMethodID, reinterpret_cast< void* >( &hk_GetMethodID ) },
-		{ offsetof( JNINativeInterface_, GetFieldID ), &o_GetFieldID, reinterpret_cast< void* >( &hk_GetFieldID ) },
-		{ offsetof( JNINativeInterface_, GetStaticMethodID ), &o_GetStaticMethodID, reinterpret_cast< void* >( &hk_GetStaticMethodID ) },
-		{ offsetof( JNINativeInterface_, GetStaticFieldID ), &o_GetStaticFieldID, reinterpret_cast< void* >( &hk_GetStaticFieldID ) },
-		{ offsetof( JNINativeInterface_, NewString ), &o_NewString, reinterpret_cast< void* >( &hk_NewString ) },
-		{ offsetof( JNINativeInterface_, GetStringLength ), &o_GetStringLength, reinterpret_cast< void* >( &hk_GetStringLength ) },
-		{ offsetof( JNINativeInterface_, GetStringChars ), &o_GetStringChars, reinterpret_cast< void* >( &hk_GetStringChars ) },
-		{ offsetof( JNINativeInterface_, ReleaseStringChars ), &o_ReleaseStringChars, reinterpret_cast< void* >( &hk_ReleaseStringChars ) },
-		{ offsetof( JNINativeInterface_, NewStringUTF ), &o_NewStringUTF, reinterpret_cast< void* >( &hk_NewStringUTF ) },
-		{ offsetof( JNINativeInterface_, GetStringUTFLength ), &o_GetStringUTFLength, reinterpret_cast< void* >( &hk_GetStringUTFLength ) },
-		{ offsetof( JNINativeInterface_, GetStringUTFChars ), &o_GetStringUTFChars, reinterpret_cast< void* >( &hk_GetStringUTFChars ) },
-		{ offsetof( JNINativeInterface_, ReleaseStringUTFChars ), &o_ReleaseStringUTFChars, reinterpret_cast< void* >( &hk_ReleaseStringUTFChars ) },
-		{ offsetof( JNINativeInterface_, GetArrayLength ), &o_GetArrayLength, reinterpret_cast< void* >( &hk_GetArrayLength ) },
-		{ offsetof( JNINativeInterface_, NewObjectArray ), &o_NewObjectArray, reinterpret_cast< void* >( &hk_NewObjectArray ) },
-		{ offsetof( JNINativeInterface_, GetObjectArrayElement ), &o_GetObjectArrayElement, reinterpret_cast< void* >( &hk_GetObjectArrayElement ) },
-		{ offsetof( JNINativeInterface_, SetObjectArrayElement ), &o_SetObjectArrayElement, reinterpret_cast< void* >( &hk_SetObjectArrayElement ) },
-		{ offsetof( JNINativeInterface_, RegisterNatives ), &o_RegisterNatives, reinterpret_cast< void* >( &hk_RegisterNatives ) },
-		{ offsetof( JNINativeInterface_, UnregisterNatives ), &o_UnregisterNatives, reinterpret_cast< void* >( &hk_UnregisterNatives ) },
-		{ offsetof( JNINativeInterface_, MonitorEnter ), &o_MonitorEnter, reinterpret_cast< void* >( &hk_MonitorEnter ) },
-		{ offsetof( JNINativeInterface_, MonitorExit ), &o_MonitorExit, reinterpret_cast< void* >( &hk_MonitorExit ) },
-		{ offsetof( JNINativeInterface_, GetJavaVM ), &o_GetJavaVM, reinterpret_cast< void* >( &hk_GetJavaVM ) },
-		{ offsetof( JNINativeInterface_, GetStringRegion ), &o_GetStringRegion, reinterpret_cast< void* >( &hk_GetStringRegion ) },
-		{ offsetof( JNINativeInterface_, GetStringUTFRegion ), &o_GetStringUTFRegion, reinterpret_cast< void* >( &hk_GetStringUTFRegion ) },
-		{ offsetof( JNINativeInterface_, GetPrimitiveArrayCritical ), &o_GetPrimitiveArrayCritical, reinterpret_cast< void* >( &hk_GetPrimitiveArrayCritical ) },
-		{ offsetof( JNINativeInterface_, ReleasePrimitiveArrayCritical ), &o_ReleasePrimitiveArrayCritical, reinterpret_cast< void* >( &hk_ReleasePrimitiveArrayCritical ) },
-		{ offsetof( JNINativeInterface_, GetStringCritical ), &o_GetStringCritical, reinterpret_cast< void* >( &hk_GetStringCritical ) },
-		{ offsetof( JNINativeInterface_, ReleaseStringCritical ), &o_ReleaseStringCritical, reinterpret_cast< void* >( &hk_ReleaseStringCritical ) },
-		{ offsetof( JNINativeInterface_, NewWeakGlobalRef ), &o_NewWeakGlobalRef, reinterpret_cast< void* >( &hk_NewWeakGlobalRef ) },
-		{ offsetof( JNINativeInterface_, DeleteWeakGlobalRef ), &o_DeleteWeakGlobalRef, reinterpret_cast< void* >( &hk_DeleteWeakGlobalRef ) },
-		{ offsetof( JNINativeInterface_, ExceptionCheck ), &o_ExceptionCheck, reinterpret_cast< void* >( &hk_ExceptionCheck ) },
-		{ offsetof( JNINativeInterface_, NewDirectByteBuffer ), &o_NewDirectByteBuffer, reinterpret_cast< void* >( &hk_NewDirectByteBuffer ) },
-		{ offsetof( JNINativeInterface_, GetDirectBufferAddress ), &o_GetDirectBufferAddress, reinterpret_cast< void* >( &hk_GetDirectBufferAddress ) },
-		{ offsetof( JNINativeInterface_, GetDirectBufferCapacity ), &o_GetDirectBufferCapacity, reinterpret_cast< void* >( &hk_GetDirectBufferCapacity ) },
-	};
+	hooked += hook( table, &JNINativeInterface_::GetVersion, o_GetVersion, &hk_GetVersion );
+	hooked += hook( table, &JNINativeInterface_::DefineClass, o_DefineClass, &hk_DefineClass );
+	hooked += hook( table, &JNINativeInterface_::FindClass, o_FindClass, &hk_FindClass );
+	hooked += hook( table, &JNINativeInterface_::FromReflectedMethod, o_FromReflectedMethod, &hk_FromReflectedMethod );
+	hooked += hook( table, &JNINativeInterface_::FromReflectedField, o_FromReflectedField, &hk_FromReflectedField );
+	hooked += hook( table, &JNINativeInterface_::ToReflectedMethod, o_ToReflectedMethod, &hk_ToReflectedMethod );
+	hooked += hook( table, &JNINativeInterface_::GetSuperclass, o_GetSuperclass, &hk_GetSuperclass );
+	hooked += hook( table, &JNINativeInterface_::IsAssignableFrom, o_IsAssignableFrom, &hk_IsAssignableFrom );
+	hooked += hook( table, &JNINativeInterface_::ToReflectedField, o_ToReflectedField, &hk_ToReflectedField );
+	hooked += hook( table, &JNINativeInterface_::Throw, o_Throw, &hk_Throw );
+	hooked += hook( table, &JNINativeInterface_::ThrowNew, o_ThrowNew, &hk_ThrowNew );
+	hooked += hook( table, &JNINativeInterface_::ExceptionOccurred, o_ExceptionOccurred, &hk_ExceptionOccurred );
+	hooked += hook( table, &JNINativeInterface_::ExceptionDescribe, o_ExceptionDescribe, &hk_ExceptionDescribe );
+	hooked += hook( table, &JNINativeInterface_::ExceptionClear, o_ExceptionClear, &hk_ExceptionClear );
+	hooked += hook( table, &JNINativeInterface_::FatalError, o_FatalError, &hk_FatalError );
+	hooked += hook( table, &JNINativeInterface_::PushLocalFrame, o_PushLocalFrame, &hk_PushLocalFrame );
+	hooked += hook( table, &JNINativeInterface_::PopLocalFrame, o_PopLocalFrame, &hk_PopLocalFrame );
+	hooked += hook( table, &JNINativeInterface_::NewGlobalRef, o_NewGlobalRef, &hk_NewGlobalRef );
+	hooked += hook( table, &JNINativeInterface_::DeleteGlobalRef, o_DeleteGlobalRef, &hk_DeleteGlobalRef );
+	hooked += hook( table, &JNINativeInterface_::DeleteLocalRef, o_DeleteLocalRef, &hk_DeleteLocalRef );
+	hooked += hook( table, &JNINativeInterface_::IsSameObject, o_IsSameObject, &hk_IsSameObject );
+	hooked += hook( table, &JNINativeInterface_::NewLocalRef, o_NewLocalRef, &hk_NewLocalRef );
+	hooked += hook( table, &JNINativeInterface_::EnsureLocalCapacity, o_EnsureLocalCapacity, &hk_EnsureLocalCapacity );
+	hooked += hook( table, &JNINativeInterface_::AllocObject, o_AllocObject, &hk_AllocObject );
+	hooked += hook( table, &JNINativeInterface_::GetObjectClass, o_GetObjectClass, &hk_GetObjectClass );
+	hooked += hook( table, &JNINativeInterface_::IsInstanceOf, o_IsInstanceOf, &hk_IsInstanceOf );
+	hooked += hook( table, &JNINativeInterface_::GetMethodID, o_GetMethodID, &hk_GetMethodID );
+	hooked += hook( table, &JNINativeInterface_::GetFieldID, o_GetFieldID, &hk_GetFieldID );
+	hooked += hook( table, &JNINativeInterface_::GetStaticMethodID, o_GetStaticMethodID, &hk_GetStaticMethodID );
+	hooked += hook( table, &JNINativeInterface_::GetStaticFieldID, o_GetStaticFieldID, &hk_GetStaticFieldID );
+	hooked += hook( table, &JNINativeInterface_::NewString, o_NewString, &hk_NewString );
 
-	for ( auto& slot : slots )
-		hooked += hook_at( table, slot );
+	hooked += hook( table, &JNINativeInterface_::GetStringChars, o_GetStringChars, &hk_GetStringChars );
 
-	hooked += hook_calls<
+	hooked += hook( table, &JNINativeInterface_::NewStringUTF, o_NewStringUTF, &hk_NewStringUTF );
+
+	hooked += hook( table, &JNINativeInterface_::GetStringUTFChars, o_GetStringUTFChars, &hk_GetStringUTFChars );
+
+	hooked += hook( table, &JNINativeInterface_::GetArrayLength, o_GetArrayLength, &hk_GetArrayLength );
+	hooked += hook( table, &JNINativeInterface_::NewObjectArray, o_NewObjectArray, &hk_NewObjectArray );
+	hooked += hook( table, &JNINativeInterface_::GetObjectArrayElement, o_GetObjectArrayElement, &hk_GetObjectArrayElement );
+	hooked += hook( table, &JNINativeInterface_::SetObjectArrayElement, o_SetObjectArrayElement, &hk_SetObjectArrayElement );
+	hooked += hook( table, &JNINativeInterface_::RegisterNatives, o_RegisterNatives, &hk_RegisterNatives );
+	hooked += hook( table, &JNINativeInterface_::UnregisterNatives, o_UnregisterNatives, &hk_UnregisterNatives );
+	hooked += hook( table, &JNINativeInterface_::MonitorEnter, o_MonitorEnter, &hk_MonitorEnter );
+	hooked += hook( table, &JNINativeInterface_::MonitorExit, o_MonitorExit, &hk_MonitorExit );
+	hooked += hook( table, &JNINativeInterface_::GetJavaVM, o_GetJavaVM, &hk_GetJavaVM );
+	hooked += hook( table, &JNINativeInterface_::GetStringRegion, o_GetStringRegion, &hk_GetStringRegion );
+	hooked += hook( table, &JNINativeInterface_::GetStringUTFRegion, o_GetStringUTFRegion, &hk_GetStringUTFRegion );
+	hooked += hook( table, &JNINativeInterface_::GetPrimitiveArrayCritical, o_GetPrimitiveArrayCritical, &hk_GetPrimitiveArrayCritical );
+	hooked += hook( table, &JNINativeInterface_::ReleasePrimitiveArrayCritical, o_ReleasePrimitiveArrayCritical, &hk_ReleasePrimitiveArrayCritical );
+	hooked += hook( table, &JNINativeInterface_::GetStringCritical, o_GetStringCritical, &hk_GetStringCritical );
+	hooked += hook( table, &JNINativeInterface_::ReleaseStringCritical, o_ReleaseStringCritical, &hk_ReleaseStringCritical );
+	hooked += hook( table, &JNINativeInterface_::NewWeakGlobalRef, o_NewWeakGlobalRef, &hk_NewWeakGlobalRef );
+	hooked += hook( table, &JNINativeInterface_::DeleteWeakGlobalRef, o_DeleteWeakGlobalRef, &hk_DeleteWeakGlobalRef );
+	hooked += hook( table, &JNINativeInterface_::ExceptionCheck, o_ExceptionCheck, &hk_ExceptionCheck );
+	hooked += hook( table, &JNINativeInterface_::NewDirectByteBuffer, o_NewDirectByteBuffer, &hk_NewDirectByteBuffer );
+	hooked += hook( table, &JNINativeInterface_::GetDirectBufferAddress, o_GetDirectBufferAddress, &hk_GetDirectBufferAddress );
+	hooked += hook( table, &JNINativeInterface_::GetDirectBufferCapacity, o_GetDirectBufferCapacity, &hk_GetDirectBufferCapacity );
+
+	hooked += hooks<
+		string_len_t< "GetStringLength", &JNINativeInterface_::GetStringLength >,
+		string_len_t< "GetStringUTFLength", &JNINativeInterface_::GetStringUTFLength >,
+		release_chars_t< "ReleaseStringChars", jchar, &JNINativeInterface_::ReleaseStringChars >,
+		release_chars_t< "ReleaseStringUTFChars", char, &JNINativeInterface_::ReleaseStringUTFChars >
+	>( table );
+
+	hooked += hook_calls <
 		call_t< "NewObject", call_mode_t::class_call, ret_mode_t::object, jobject, &JNINativeInterface_::NewObject, &JNINativeInterface_::NewObjectV, &JNINativeInterface_::NewObjectA >,
 		call_t< "CallObjectMethod", call_mode_t::instance, ret_mode_t::object, jobject, &JNINativeInterface_::CallObjectMethod, &JNINativeInterface_::CallObjectMethodV, &JNINativeInterface_::CallObjectMethodA >,
 		call_t< "CallBooleanMethod", call_mode_t::instance, ret_mode_t::value, jboolean, &JNINativeInterface_::CallBooleanMethod, &JNINativeInterface_::CallBooleanMethodV, &JNINativeInterface_::CallBooleanMethodA, value_text< jboolean > >,
 		call_t< "CallByteMethod", call_mode_t::instance, ret_mode_t::value, jbyte, &JNINativeInterface_::CallByteMethod, &JNINativeInterface_::CallByteMethodV, &JNINativeInterface_::CallByteMethodA, value_text< jbyte > >,
 		call_t< "CallCharMethod", call_mode_t::instance, ret_mode_t::value, jchar, &JNINativeInterface_::CallCharMethod, &JNINativeInterface_::CallCharMethodV, &JNINativeInterface_::CallCharMethodA, value_text< jchar > >,
 		call_t< "CallShortMethod", call_mode_t::instance, ret_mode_t::value, jshort, &JNINativeInterface_::CallShortMethod, &JNINativeInterface_::CallShortMethodV, &JNINativeInterface_::CallShortMethodA, value_text< jshort > >,
-		call_t< "CallIntMethod", call_mode_t::instance, ret_mode_t::value, jint, &JNINativeInterface_::CallIntMethod, &JNINativeInterface_::CallIntMethodV, &JNINativeInterface_::CallIntMethodA, value_text< jint > >,
+		call_t< "CallIntMethod", call_mode_t::instance, ret_mode_t::value, jint, &JNINativeInterface_::CallIntMethod, &JNINativeInterface_::CallIntMethodV, &JNINativeInterface_::CallIntMethodA >,
 		call_t< "CallLongMethod", call_mode_t::instance, ret_mode_t::value, jlong, &JNINativeInterface_::CallLongMethod, &JNINativeInterface_::CallLongMethodV, &JNINativeInterface_::CallLongMethodA, value_text< jlong > >,
 		call_t< "CallFloatMethod", call_mode_t::instance, ret_mode_t::value, jfloat, &JNINativeInterface_::CallFloatMethod, &JNINativeInterface_::CallFloatMethodV, &JNINativeInterface_::CallFloatMethodA, value_text< jfloat > >,
 		call_t< "CallDoubleMethod", call_mode_t::instance, ret_mode_t::value, jdouble, &JNINativeInterface_::CallDoubleMethod, &JNINativeInterface_::CallDoubleMethodV, &JNINativeInterface_::CallDoubleMethodA, value_text< jdouble > >,
@@ -953,7 +932,7 @@ int install_jni( JNIEnv* env ) {
 		call_t< "CallNonvirtualByteMethod", call_mode_t::nonvirtual, ret_mode_t::value, jbyte, &JNINativeInterface_::CallNonvirtualByteMethod, &JNINativeInterface_::CallNonvirtualByteMethodV, &JNINativeInterface_::CallNonvirtualByteMethodA, value_text< jbyte > >,
 		call_t< "CallNonvirtualCharMethod", call_mode_t::nonvirtual, ret_mode_t::value, jchar, &JNINativeInterface_::CallNonvirtualCharMethod, &JNINativeInterface_::CallNonvirtualCharMethodV, &JNINativeInterface_::CallNonvirtualCharMethodA, value_text< jchar > >,
 		call_t< "CallNonvirtualShortMethod", call_mode_t::nonvirtual, ret_mode_t::value, jshort, &JNINativeInterface_::CallNonvirtualShortMethod, &JNINativeInterface_::CallNonvirtualShortMethodV, &JNINativeInterface_::CallNonvirtualShortMethodA, value_text< jshort > >,
-		call_t< "CallNonvirtualIntMethod", call_mode_t::nonvirtual, ret_mode_t::value, jint, &JNINativeInterface_::CallNonvirtualIntMethod, &JNINativeInterface_::CallNonvirtualIntMethodV, &JNINativeInterface_::CallNonvirtualIntMethodA, value_text< jint > >,
+		call_t< "CallNonvirtualIntMethod", call_mode_t::nonvirtual, ret_mode_t::value, jint, &JNINativeInterface_::CallNonvirtualIntMethod, &JNINativeInterface_::CallNonvirtualIntMethodV, &JNINativeInterface_::CallNonvirtualIntMethodA >,
 		call_t< "CallNonvirtualLongMethod", call_mode_t::nonvirtual, ret_mode_t::value, jlong, &JNINativeInterface_::CallNonvirtualLongMethod, &JNINativeInterface_::CallNonvirtualLongMethodV, &JNINativeInterface_::CallNonvirtualLongMethodA, value_text< jlong > >,
 		call_t< "CallNonvirtualFloatMethod", call_mode_t::nonvirtual, ret_mode_t::value, jfloat, &JNINativeInterface_::CallNonvirtualFloatMethod, &JNINativeInterface_::CallNonvirtualFloatMethodV, &JNINativeInterface_::CallNonvirtualFloatMethodA, value_text< jfloat > >,
 		call_t< "CallNonvirtualDoubleMethod", call_mode_t::nonvirtual, ret_mode_t::value, jdouble, &JNINativeInterface_::CallNonvirtualDoubleMethod, &JNINativeInterface_::CallNonvirtualDoubleMethodV, &JNINativeInterface_::CallNonvirtualDoubleMethodA, value_text< jdouble > >,
@@ -963,20 +942,20 @@ int install_jni( JNIEnv* env ) {
 		call_t< "CallStaticByteMethod", call_mode_t::class_call, ret_mode_t::value, jbyte, &JNINativeInterface_::CallStaticByteMethod, &JNINativeInterface_::CallStaticByteMethodV, &JNINativeInterface_::CallStaticByteMethodA, value_text< jbyte > >,
 		call_t< "CallStaticCharMethod", call_mode_t::class_call, ret_mode_t::value, jchar, &JNINativeInterface_::CallStaticCharMethod, &JNINativeInterface_::CallStaticCharMethodV, &JNINativeInterface_::CallStaticCharMethodA, value_text< jchar > >,
 		call_t< "CallStaticShortMethod", call_mode_t::class_call, ret_mode_t::value, jshort, &JNINativeInterface_::CallStaticShortMethod, &JNINativeInterface_::CallStaticShortMethodV, &JNINativeInterface_::CallStaticShortMethodA, value_text< jshort > >,
-		call_t< "CallStaticIntMethod", call_mode_t::class_call, ret_mode_t::value, jint, &JNINativeInterface_::CallStaticIntMethod, &JNINativeInterface_::CallStaticIntMethodV, &JNINativeInterface_::CallStaticIntMethodA, value_text< jint > >,
+		call_t< "CallStaticIntMethod", call_mode_t::class_call, ret_mode_t::value, jint, &JNINativeInterface_::CallStaticIntMethod, &JNINativeInterface_::CallStaticIntMethodV, &JNINativeInterface_::CallStaticIntMethodA >,
 		call_t< "CallStaticLongMethod", call_mode_t::class_call, ret_mode_t::value, jlong, &JNINativeInterface_::CallStaticLongMethod, &JNINativeInterface_::CallStaticLongMethodV, &JNINativeInterface_::CallStaticLongMethodA, value_text< jlong > >,
 		call_t< "CallStaticFloatMethod", call_mode_t::class_call, ret_mode_t::value, jfloat, &JNINativeInterface_::CallStaticFloatMethod, &JNINativeInterface_::CallStaticFloatMethodV, &JNINativeInterface_::CallStaticFloatMethodA, value_text< jfloat > >,
 		call_t< "CallStaticDoubleMethod", call_mode_t::class_call, ret_mode_t::value, jdouble, &JNINativeInterface_::CallStaticDoubleMethod, &JNINativeInterface_::CallStaticDoubleMethodV, &JNINativeInterface_::CallStaticDoubleMethodA, value_text< jdouble > >,
 		call_t< "CallStaticVoidMethod", call_mode_t::class_call, ret_mode_t::void_ret, void, &JNINativeInterface_::CallStaticVoidMethod, &JNINativeInterface_::CallStaticVoidMethodV, &JNINativeInterface_::CallStaticVoidMethodA >
-	>( table );
+	> ( table );
 
-	hooked += hooks<
+	hooked += hooks <
 		get_field_t< "GetObjectField", jobject, jobject, &JNINativeInterface_::GetObjectField, true >,
 		get_field_t< "GetBooleanField", jobject, jboolean, &JNINativeInterface_::GetBooleanField, false, value_text< jboolean > >,
 		get_field_t< "GetByteField", jobject, jbyte, &JNINativeInterface_::GetByteField, false, value_text< jbyte > >,
 		get_field_t< "GetCharField", jobject, jchar, &JNINativeInterface_::GetCharField, false, value_text< jchar > >,
 		get_field_t< "GetShortField", jobject, jshort, &JNINativeInterface_::GetShortField, false, value_text< jshort > >,
-		get_field_t< "GetIntField", jobject, jint, &JNINativeInterface_::GetIntField, false, value_text< jint > >,
+		get_field_t< "GetIntField", jobject, jint, &JNINativeInterface_::GetIntField, false >,
 		get_field_t< "GetLongField", jobject, jlong, &JNINativeInterface_::GetLongField, false, value_text< jlong > >,
 		get_field_t< "GetFloatField", jobject, jfloat, &JNINativeInterface_::GetFloatField, false, value_text< jfloat > >,
 		get_field_t< "GetDoubleField", jobject, jdouble, &JNINativeInterface_::GetDoubleField, false, value_text< jdouble > >,
@@ -985,7 +964,7 @@ int install_jni( JNIEnv* env ) {
 		set_field_t< "SetByteField", jobject, jbyte, &JNINativeInterface_::SetByteField, false, value_text< jbyte > >,
 		set_field_t< "SetCharField", jobject, jchar, &JNINativeInterface_::SetCharField, false, value_text< jchar > >,
 		set_field_t< "SetShortField", jobject, jshort, &JNINativeInterface_::SetShortField, false, value_text< jshort > >,
-		set_field_t< "SetIntField", jobject, jint, &JNINativeInterface_::SetIntField, false, value_text< jint > >,
+		set_field_t< "SetIntField", jobject, jint, &JNINativeInterface_::SetIntField, false >,
 		set_field_t< "SetLongField", jobject, jlong, &JNINativeInterface_::SetLongField, false, value_text< jlong > >,
 		set_field_t< "SetFloatField", jobject, jfloat, &JNINativeInterface_::SetFloatField, false, value_text< jfloat > >,
 		set_field_t< "SetDoubleField", jobject, jdouble, &JNINativeInterface_::SetDoubleField, false, value_text< jdouble > >,
@@ -994,7 +973,7 @@ int install_jni( JNIEnv* env ) {
 		get_field_t< "GetStaticByteField", jclass, jbyte, &JNINativeInterface_::GetStaticByteField, false, value_text< jbyte > >,
 		get_field_t< "GetStaticCharField", jclass, jchar, &JNINativeInterface_::GetStaticCharField, false, value_text< jchar > >,
 		get_field_t< "GetStaticShortField", jclass, jshort, &JNINativeInterface_::GetStaticShortField, false, value_text< jshort > >,
-		get_field_t< "GetStaticIntField", jclass, jint, &JNINativeInterface_::GetStaticIntField, false, value_text< jint > >,
+		get_field_t< "GetStaticIntField", jclass, jint, &JNINativeInterface_::GetStaticIntField, false >,
 		get_field_t< "GetStaticLongField", jclass, jlong, &JNINativeInterface_::GetStaticLongField, false, value_text< jlong > >,
 		get_field_t< "GetStaticFloatField", jclass, jfloat, &JNINativeInterface_::GetStaticFloatField, false, value_text< jfloat > >,
 		get_field_t< "GetStaticDoubleField", jclass, jdouble, &JNINativeInterface_::GetStaticDoubleField, false, value_text< jdouble > >,
@@ -1003,7 +982,7 @@ int install_jni( JNIEnv* env ) {
 		set_field_t< "SetStaticByteField", jclass, jbyte, &JNINativeInterface_::SetStaticByteField, false, value_text< jbyte > >,
 		set_field_t< "SetStaticCharField", jclass, jchar, &JNINativeInterface_::SetStaticCharField, false, value_text< jchar > >,
 		set_field_t< "SetStaticShortField", jclass, jshort, &JNINativeInterface_::SetStaticShortField, false, value_text< jshort > >,
-		set_field_t< "SetStaticIntField", jclass, jint, &JNINativeInterface_::SetStaticIntField, false, value_text< jint > >,
+		set_field_t< "SetStaticIntField", jclass, jint, &JNINativeInterface_::SetStaticIntField, false >,
 		set_field_t< "SetStaticLongField", jclass, jlong, &JNINativeInterface_::SetStaticLongField, false, value_text< jlong > >,
 		set_field_t< "SetStaticFloatField", jclass, jfloat, &JNINativeInterface_::SetStaticFloatField, false, value_text< jfloat > >,
 		set_field_t< "SetStaticDoubleField", jclass, jdouble, &JNINativeInterface_::SetStaticDoubleField, false, value_text< jdouble > >,
@@ -1047,16 +1026,16 @@ int install_jni( JNIEnv* env ) {
 		set_region_t< "SetLongArrayRegion", jlongArray, jlong, &JNINativeInterface_::SetLongArrayRegion >,
 		set_region_t< "SetFloatArrayRegion", jfloatArray, jfloat, &JNINativeInterface_::SetFloatArrayRegion >,
 		set_region_t< "SetDoubleArrayRegion", jdoubleArray, jdouble, &JNINativeInterface_::SetDoubleArrayRegion >
-	>( table );
+	> ( table );
 
 	if ( version >= JNI_VERSION_1_6 )
-		hooked += hook_at( table, { offsetof( JNINativeInterface_, GetObjectRefType ), &o_GetObjectRefType, reinterpret_cast< void* >( &hk_GetObjectRefType ) } );
+		hooked += hook( table, &JNINativeInterface_::GetObjectRefType, o_GetObjectRefType, &hk_GetObjectRefType );
 	if ( major >= 9 )
-		hooked += hook_at( table, { offsetof( JNINativeInterface_, GetModule ), &o_GetModule, reinterpret_cast< void* >( &hk_GetModule ) } );
+		hooked += hook( table, &JNINativeInterface_::GetModule, o_GetModule, &hk_GetModule );
 	if ( major >= 19 )
-		hooked += hook_at( table, { offsetof( JNINativeInterface_, IsVirtualThread ), &o_IsVirtualThread, reinterpret_cast< void* >( &hk_IsVirtualThread ) } );
+		hooked += hook( table, &JNINativeInterface_::IsVirtualThread, o_IsVirtualThread, &hk_IsVirtualThread );
 	if ( major >= 24 )
-		hooked += hook_at( table, { offsetof( JNINativeInterface_, GetStringUTFLengthAsLong ), &o_GetStringUTFLengthAsLong, reinterpret_cast< void* >( &hk_GetStringUTFLengthAsLong ) } );
+		hooked += hook( table, &JNINativeInterface_::GetStringUTFLengthAsLong, o_GetStringUTFLengthAsLong, &hk_GetStringUTFLengthAsLong );
 
 	return hooked;
 }

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "common.hpp"
-
+#include <cstdint>
 #include <intrin.h>
 
 struct list_entry_t {
@@ -49,8 +48,8 @@ class c_caller {
 public:
 	void* m_prev = {};
 
-	explicit c_caller( void* from ) { this->m_prev = set_caller( from ); }
-	~c_caller( ) { set_caller( this->m_prev ); }
+	explicit c_caller( void* from ) { m_prev = set_caller( from ); }
+	~c_caller( ) { set_caller( m_prev ); }
 
 	c_caller( const c_caller& ) = delete;
 	c_caller& operator=( const c_caller& ) = delete;
